@@ -88,19 +88,38 @@ st.sidebar.caption(
 # ---------------------------------------------------------------------------
 
 
+@st.cache_resource(show_spinner=False)
+def _build_client(sa_text: str, sheet_id: str):
+    """
+    Cached so the gspread connection (and the underlying API calls it makes)
+    is only created ONCE per unique (sa_text, sheet_id) pair, instead of on
+    every Streamlit rerun. This is what was causing the 429 quota error —
+    Streamlit reruns the whole script on every keystroke/click, and without
+    caching that meant a fresh API connection every single time.
+    """
+    sa_info = json.loads(sa_text)
+    return SheetsClient(sa_info, sheet_id)
+
+
 def get_client():
     sa_text = st.session_state.get("sa_json_text", "")
     sheet_id = st.session_state.get("spreadsheet_id", "")
     if not sa_text or not sheet_id:
         return None, "Add your service account JSON and Spreadsheet ID in the sidebar to connect."
     try:
-        sa_info = json.loads(sa_text)
+        json.loads(sa_text)
     except json.JSONDecodeError:
         return None, "That doesn't look like valid JSON. Paste the full key file contents."
     try:
-        client = SheetsClient(sa_info, sheet_id)
+        client = _build_client(sa_text, sheet_id)
         return client, None
     except Exception as e:
+        err_text = str(e)
+        if "429" in err_text or "Quota exceeded" in err_text:
+            return None, (
+                "Google's API rate limit was hit (this resets automatically every minute). "
+                "Wait about 60 seconds, then click Refresh or reload the page."
+            )
         return None, f"Couldn't connect to the sheet: {e}"
 
 
