@@ -34,15 +34,19 @@ class SheetsClient:
         creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
         self._gc = gspread.authorize(creds)
         self._sh = self._gc.open_by_key(spreadsheet_id)
+        self._ws_cache = None  # cached worksheet handle, fetched once
 
     # ---- sheet bootstrap -------------------------------------------------
 
     def get_or_create_seen_sheet(self):
+        if self._ws_cache is not None:
+            return self._ws_cache
         try:
             ws = self._sh.worksheet(SEEN_SHEET_NAME)
         except gspread.WorksheetNotFound:
             ws = self._sh.add_worksheet(title=SEEN_SHEET_NAME, rows=1000, cols=2)
             ws.append_row(HEADER_ROW)
+        self._ws_cache = ws
         return ws
 
     # ---- reads -------------------------------------------------------------
